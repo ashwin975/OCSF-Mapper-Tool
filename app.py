@@ -41,7 +41,7 @@ def get_current_user():
 DEFAULT_REFERENCE_DIR = "/Volumes/dsl_dev/internal/ocsf_mapper/preset_library"
 DEFAULT_OUTPUT_DIR = "/Volumes/dsl_dev/internal/ocsf_mapper/generated_presets"
 DEFAULT_CACHE_DIR = "/Volumes/dsl_dev/internal/ocsf_mapper/schema_cache"
-
+DEFAULT_STAGING_DIR = "/Volumes/dsl_dev/internal/ocsf_mapper/staging"
 
 # ─── Volume access (Databricks SDK) ──────────────────────────────────────────
 
@@ -143,6 +143,43 @@ def _safe_filename(vendor: str, source_type: str) -> str:
     base = f"{vendor}_{source_type}"
     base = re.sub(r"[^a-zA-Z0-9_\-]", "_", base).strip("_").lower()
     return base or "preset"
+
+def submit_for_review(
+    preset_text: str,
+    report_text: str,
+    vendor: str,
+    source_type: str,
+    result: dict,
+) -> tuple[str, str]:
+    """Stage a preset submission to the volume for the promoter to pick up.
+
+    Returns (submission_id, base_path).
+    """
+    user = get_current_user()
+    email = user.get("email") or "unknown@unknown"
+    ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    safe_name = _safe_filename(vendor or "preset", source_type or "gen")
+    submission_id = f"{ts}_{safe_name}"
+    base = f"{DEFAULT_STAGING_DIR}/pending/{submission_id}"
+
+    metadata = {
+        "submission_id": submission_id,
+        "vendor": vendor,
+        "source_type": source_type,
+        "submitted_by_email": email,
+        "submitted_by_user": user.get("preferred_username") or email,
+        "submitted_at": datetime.utcnow().isoformat() + "Z",
+        "ocsf_version": st.session_state.ocsf_version,
+        "ocsf_classes": [c["uid"] for c in result.get("classes", [])],
+        "references_used": result.get("references_used", []),
+        "tool_version": "ocsf_mapper_app_v3",
+    }
+
+    volume_write_text(f"{base}/preset.yaml", preset_text)
+    volume_write_text(f"{base}/report.md", report_text)
+    volume_write_text(f"{base}/metadata.json", json.dumps(metadata, indent=2))
+
+    return submission_id, base
 
 
 def _html_escape(text: str) -> str:
@@ -370,16 +407,6 @@ st.set_page_config(page_title="OCSF Mapper", page_icon="🧭", layout="wide")
 _init_state()
 render_header()
 
-# --- DEBUG: remove after verifying user identity is captured ---
-with st.expander("🔍 Debug: current user", expanded=True):
-    user = get_current_user()
-    st.write("Email:", user["email"])
-    st.write("User:", user["user"])
-    st.write("Preferred username:", user["preferred_username"])
-    st.write("All headers:")
-    st.json(user["all_headers"])
-# --- end debug ---
-
 @st.cache_data(show_spinner=False, ttl=3600)
 def _ocsf_version_exists(version: str) -> tuple[bool, str]:
     """Check if an OCSF version exists at schema.ocsf.io. Returns (exists, message)."""
@@ -518,8 +545,6 @@ def render_generator_tab():
                 local_refs = volume_download_dir(st.session_state.reference_dir)
                 local_cache = "/tmp/ocsf_mapper_cache" if _in_app() else DEFAULT_CACHE_DIR
 
-                # Buffer for streaming tokens (so we don't update the UI on every single token,
-                # which would be too chatty — flush every 50 tokens or every newline)
                 stream_state = {
                     "tokens": [],
                     "since_flush": 0,
@@ -551,11 +576,9 @@ def render_generator_tab():
                     elif phase == "generate_token":
                         stream_state["tokens"].append(message)
                         stream_state["since_flush"] += 1
-                        # Flush periodically — every 30 chunks or on newlines
                         if stream_state["since_flush"] >= 30 or "\n" in message:
                             stream_state["since_flush"] = 0
                             text = "".join(stream_state["tokens"])
-                            # Show last ~2000 chars in a fixed-height scrollable container
                             display = text[-2000:] if len(text) > 2000 else text
                             generate_stream_box.markdown(
                                 f'<div style="max-height:300px;overflow-y:auto;background:#1A2850;'
@@ -568,86 +591,6 @@ def render_generator_tab():
                             )
                     elif phase == "generate_done":
                         render_phase(phase_generate, "Generation complete", "done", message)
-                        # Clear streaming preview — final preset shown below
-                        generate_stream_box.empty()
-
-                # Initial state — pending for fetch and generate
-                render_phase(phase_fetch, "Fetch OCSF schema", "pending")
-                render_phase(phase_generate, "Generate preset", "pending")
-
-                result = run(
-                    sample_path=local_sample,
-                    vendor=vendor,
-                    source_type=source_type,
-                    ocsf_version=st.session_state.ocsf_version,
-                    class_uids=class_uids,
-                    reference_dir=local_refs,
-                    cache_dir=local_cache,
-                    out_dir="/tmp/ocsf_mapper_output",
-                    verbose=False,
-                    progress_callback=cb,
-                )
-
-                st.session_state.result = result
-                st.session_state.preset_text = Path(result["preset_path"]).read_text()
-                st.session_state.report_text = Path(result["report_path"]).read_text()
-                # Clear the streaming preview now that the final preset is shown below
-                generate_stream_box.empty()
-                phase_classify.empty()
-                phase_fetch.empty()
-                phase_generate.empty()
-            except Exception as e:
-                st.session_state.error = f"{e}\n\n{traceback.format_exc()}"
-
-    with col_output:
-        if st.session_state.error:
-            st.error(st.session_state.error)
-        elif st.session_state.result:
-            r = st.session_state.result
-            stat_cards([
-                {"num": ", ".join(str(c["uid"]) for c in r["classes"]), "label": "Classes", "kind": "primary"},
-                {"num": len(r["references_used"]), "label": "References used", "kind": "success"},
-                {"num": r["usage"]["input_tokens"], "label": "Input tokens"},
-                {"num": r["usage"]["output_tokens"], "label": "Output tokens"},
-            ])
-        else:
-            st.info("Fill the form and click Generate.")
-
-    if st.session_state.result:
-        st.divider()
-        tab_preset, tab_report = st.tabs(["📝 Preset (editable)", "📋 Generation report"])
-        with tab_preset:
-            edited = st.text_area(
-                "preset",
-                value=st.session_state.preset_text,
-                height=500,
-                key="preset_editor",
-                label_visibility="collapsed",
-            )
-            st.session_state.preset_text = edited
-            col_save, col_dl = st.columns(2)
-            with col_save:
-                if st.button("💾 Save preset to Volume", use_container_width=True):
-                    try:
-                        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        base = _safe_filename(vendor or "preset", source_type or "gen")
-                        preset_dest = f"{st.session_state.output_dir}/{base}_{ts}_preset.yaml"
-                        report_dest = f"{st.session_state.output_dir}/{base}_{ts}_report.md"
-                        volume_write_text(preset_dest, edited)
-                        volume_write_text(report_dest, st.session_state.report_text)
-                        st.session_state.save_message = f"✓ Saved\n- `{preset_dest}`\n- `{report_dest}`"
-                    except Exception as e:
-                        st.session_state.save_message = f"Save failed: {e}"
-            with col_dl:
-                fname = f"{_safe_filename(vendor or 'preset', source_type or 'gen')}_preset.yaml"
-                st.download_button("⬇️ Download preset", data=edited, file_name=fname, mime="application/yaml", use_container_width=True)
-            if st.session_state.save_message:
-                if st.session_state.save_message.startswith("✓"):
-                    st.success(st.session_state.save_message)
-                else:
-                    st.error(st.session_state.save_message)
-        with tab_report:
-            st.markdown(st.session_state.report_text)
 
 
 # ─── Tab 2: Sample Inspector ─────────────────────────────────────────────────
