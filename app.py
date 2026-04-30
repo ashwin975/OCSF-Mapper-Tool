@@ -468,7 +468,6 @@ with st.sidebar:
     else:
         status_pill("📚 Library path does not exist", "err")
 
-
 # ─── Tab 1: Generator ────────────────────────────────────────────────────────
 
 def render_generator_tab():
@@ -491,7 +490,6 @@ def render_generator_tab():
             placeholder="/Volumes/.../samples/vendor_sample.jsonl",
             key="gen_sample_path",
         )
-        # Secondary action — queue the sample for inspection
         if st.button("🔍 Inspect this sample", type="secondary", use_container_width=True, disabled=not sample_path):
             st.session_state.prefill_inspect_path = sample_path
             st.session_state.inspect_pending = True
@@ -522,7 +520,6 @@ def render_generator_tab():
         elif not volume_exists(sample_path):
             st.session_state.error = f"Sample not found: {sample_path}"
         else:
-            # Set up live-progress placeholders in the right column
             with col_output:
                 st.markdown("**Live progress**")
                 phase_classify = st.empty()
@@ -545,13 +542,9 @@ def render_generator_tab():
                 local_refs = volume_download_dir(st.session_state.reference_dir)
                 local_cache = "/tmp/ocsf_mapper_cache" if _in_app() else DEFAULT_CACHE_DIR
 
-                stream_state = {
-                    "tokens": [],
-                    "since_flush": 0,
-                }
+                stream_state = {"tokens": [], "since_flush": 0}
 
                 def render_phase(placeholder, label, status, message=""):
-                    """Render a phase row. status ∈ {pending, running, done, skipped}."""
                     icon = {"pending": "○", "running": "⏳", "done": "✓", "skipped": "—"}[status]
                     color = {"pending": "#94A3B8", "running": "#F5BE2D", "done": "#22C55E", "skipped": "#94A3B8"}[status]
                     placeholder.markdown(
@@ -591,8 +584,113 @@ def render_generator_tab():
                             )
                     elif phase == "generate_done":
                         render_phase(phase_generate, "Generation complete", "done", message)
+                        generate_stream_box.empty()
 
+                render_phase(phase_fetch, "Fetch OCSF schema", "pending")
+                render_phase(phase_generate, "Generate preset", "pending")
 
+                result = run(
+                    sample_path=local_sample,
+                    vendor=vendor,
+                    source_type=source_type,
+                    ocsf_version=st.session_state.ocsf_version,
+                    class_uids=class_uids,
+                    reference_dir=local_refs,
+                    cache_dir=local_cache,
+                    out_dir="/tmp/ocsf_mapper_output",
+                    verbose=False,
+                    progress_callback=cb,
+                )
+
+                st.session_state.result = result
+                st.session_state.preset_text = Path(result["preset_path"]).read_text()
+                st.session_state.report_text = Path(result["report_path"]).read_text()
+                generate_stream_box.empty()
+                phase_classify.empty()
+                phase_fetch.empty()
+                phase_generate.empty()
+            except Exception as e:
+                st.session_state.error = f"{e}\n\n{traceback.format_exc()}"
+
+    with col_output:
+        if st.session_state.error:
+            st.error(st.session_state.error)
+        elif st.session_state.result:
+            r = st.session_state.result
+            stat_cards([
+                {"num": ", ".join(str(c["uid"]) for c in r["classes"]), "label": "Classes", "kind": "primary"},
+                {"num": len(r["references_used"]), "label": "References used", "kind": "success"},
+                {"num": r["usage"]["input_tokens"], "label": "Input tokens"},
+                {"num": r["usage"]["output_tokens"], "label": "Output tokens"},
+            ])
+        else:
+            st.info("Fill the form and click Generate.")
+
+    if st.session_state.result:
+        st.divider()
+        tab_preset, tab_report = st.tabs(["📝 Preset (editable)", "📋 Generation report"])
+        with tab_preset:
+            edited = st.text_area(
+                "preset",
+                value=st.session_state.preset_text,
+                height=500,
+                key="preset_editor",
+                label_visibility="collapsed",
+            )
+            st.session_state.preset_text = edited
+
+            col_save, col_dl, col_submit = st.columns(3)
+
+            with col_save:
+                if st.button("💾 Save preset to Volume", use_container_width=True):
+                    try:
+                        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        base = _safe_filename(vendor or "preset", source_type or "gen")
+                        preset_dest = f"{st.session_state.output_dir}/{base}_{ts}_preset.yaml"
+                        report_dest = f"{st.session_state.output_dir}/{base}_{ts}_report.md"
+                        volume_write_text(preset_dest, edited)
+                        volume_write_text(report_dest, st.session_state.report_text)
+                        st.session_state.save_message = f"✓ Saved\n- `{preset_dest}`\n- `{report_dest}`"
+                    except Exception as e:
+                        st.session_state.save_message = f"Save failed: {e}"
+
+            with col_dl:
+                fname = f"{_safe_filename(vendor or 'preset', source_type or 'gen')}_preset.yaml"
+                st.download_button(
+                    "⬇️ Download preset",
+                    data=edited,
+                    file_name=fname,
+                    mime="application/yaml",
+                    use_container_width=True,
+                )
+
+            with col_submit:
+                if st.button("📤 Submit for review", use_container_width=True, type="primary"):
+                    try:
+                        sid, base_path = submit_for_review(
+                            preset_text=edited,
+                            report_text=st.session_state.report_text,
+                            vendor=vendor,
+                            source_type=source_type,
+                            result=st.session_state.result,
+                        )
+                        st.session_state.save_message = (
+                            f"✓ Submitted for review\n"
+                            f"- Submission ID: `{sid}`\n"
+                            f"- Staged at: `{base_path}/`\n"
+                            f"- A PR will be opened against `dev_action_automate_test` shortly."
+                        )
+                    except Exception as e:
+                        st.session_state.save_message = f"Submission failed: {e}"
+
+            if st.session_state.save_message:
+                if st.session_state.save_message.startswith("✓"):
+                    st.success(st.session_state.save_message)
+                else:
+                    st.error(st.session_state.save_message)
+        with tab_report:
+            st.markdown(st.session_state.report_text)
+            
 # ─── Tab 2: Sample Inspector ─────────────────────────────────────────────────
 
 def render_inspector_tab():
