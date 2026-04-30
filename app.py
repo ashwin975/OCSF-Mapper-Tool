@@ -35,16 +35,6 @@ def get_current_user():
         "all_headers": dict(headers),
     }
 
-# --- DEBUG: remove after verifying user identity is captured ---
-with st.expander("🔍 Debug: current user", expanded=False):
-    user = get_current_user()
-    st.write("Email:", user["email"])
-    st.write("User:", user["user"])
-    st.write("Preferred username:", user["preferred_username"])
-    st.write("All headers:")
-    st.json(user["all_headers"])
-# --- end debug ---
-
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -379,6 +369,16 @@ def status_pill(text: str, kind: str = "ok"):
 st.set_page_config(page_title="OCSF Mapper", page_icon="🧭", layout="wide")
 _init_state()
 render_header()
+
+# --- DEBUG: remove after verifying user identity is captured ---
+with st.expander("🔍 Debug: current user", expanded=True):
+    user = get_current_user()
+    st.write("Email:", user["email"])
+    st.write("User:", user["user"])
+    st.write("Preferred username:", user["preferred_username"])
+    st.write("All headers:")
+    st.json(user["all_headers"])
+# --- end debug ---
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def _ocsf_version_exists(version: str) -> tuple[bool, str]:
