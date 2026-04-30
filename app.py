@@ -24,6 +24,28 @@ from ocsf_mapper.profiler import detect_format, profile, render_profile_for_llm
 from ocsf_mapper.reference_library import parse_preset_metadata
 
 
+def get_current_user():
+    """Read the authenticated user from Databricks Apps OBO headers."""
+    headers = st.context.headers
+    return {
+        "email": headers.get("X-Forwarded-Email"),
+        "user": headers.get("X-Forwarded-User"),
+        "preferred_username": headers.get("X-Forwarded-Preferred-Username"),
+        # Catch-all so we can see what's actually available
+        "all_headers": dict(headers),
+    }
+
+# --- DEBUG: remove after verifying user identity is captured ---
+with st.expander("🔍 Debug: current user", expanded=False):
+    user = get_current_user()
+    st.write("Email:", user["email"])
+    st.write("User:", user["user"])
+    st.write("Preferred username:", user["preferred_username"])
+    st.write("All headers:")
+    st.json(user["all_headers"])
+# --- end debug ---
+
+
 # ─── Config ──────────────────────────────────────────────────────────────────
 
 DEFAULT_REFERENCE_DIR = "/Volumes/dsl_dev/internal/ocsf_mapper/preset_library"
