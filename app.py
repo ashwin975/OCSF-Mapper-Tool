@@ -290,6 +290,7 @@ CUSTOM_CSS = """
     font-size: 13px; color: #93C5FD;
   }
 
+
   /* Tabs */
   .stTabs [data-baseweb="tab-list"] {
     gap: 0; background: transparent; padding: 0;
@@ -354,6 +355,29 @@ CUSTOM_CSS = """
 
   /* Divider */
   hr { border-color: #2D3E6B !important; }
+
+  /* Ace editor frame — match the slate/navy palette */
+  .ace_editor {
+    border: 1px solid #2D3E6B !important;
+    border-radius: 8px !important;
+  }
+  .ace-tomorrow-night-blue {
+    background: #1A2850 !important;
+  }
+  .ace_gutter {
+    background: #14234A !important;
+    border-right: 1px solid #2D3E6B !important;
+  }
+</style>
+"""
+
+
+
+
+
+
+
+
 </style>
 """
 
@@ -630,12 +654,20 @@ def render_generator_tab():
         st.divider()
         tab_preset, tab_report = st.tabs(["📝 Preset (editable)", "📋 Generation report"])
         with tab_preset:
-            edited = st.text_area(
-                "preset",
+            from streamlit_ace import st_ace
+
+            edited = st_ace(
                 value=st.session_state.preset_text,
-                height=500,
-                key="preset_editor",
-                label_visibility="collapsed",
+                language="yaml",
+                theme="tomorrow_night_blue",   # matches your dark slate/navy palette
+                height=700,                     # was 500 — more breathing room
+                font_size=15,                   # was browser default ~13
+                tab_size=2,
+                wrap=True,
+                show_gutter=True,               # line numbers
+                show_print_margin=False,
+                auto_update=True,               # commit changes on every keystroke
+                key="preset_editor_ace",
             )
             st.session_state.preset_text = edited
 
