@@ -371,17 +371,6 @@ CUSTOM_CSS = """
 </style>
 """
 
-
-
-
-
-
-
-
-</style>
-"""
-
-
 def render_header():
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     st.markdown(
