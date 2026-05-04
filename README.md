@@ -7,9 +7,9 @@ A Databricks-hosted compiler for OCSF presets. Point it at a vendor sample, and 
 Open the app, then in the Generator tab:
 
 ```
-Sample path:    /Volumes/dsl_dev/internal/ocsf_mapper/samples/snyk_vulns.jsonl
-Vendor:         snyk
-Source type:    vulnerabilities
+Sample path:    /Volumes/dsl_dev/internal/ocsf_mapper/samples/vender.json
+Vendor:         snyk (example)
+Source type:    vulnerabilities (example)
 [Generate preset]
 ```
 
