@@ -21,9 +21,7 @@ The tool classifies the sample to the relevant OCSF class, fetches the schema, a
   <img src="architecture.png" alt="OCSF Mapper architecture" width="900" />
 </p>
 
-Three layers, separated by a UC volume boundary so submitters never need GitHub credentials:
-
-| Layer | Component | What it does |
+| Layers | Component | What it does |
 |-------|-----------|--------------|
 | App | Streamlit (Databricks Apps) | Generates and reviews presets; writes submissions to `staging/pending/` |
 | Storage | UC Volume | Hosts vendor samples, the reference preset library, schema cache, and the submission queue |
