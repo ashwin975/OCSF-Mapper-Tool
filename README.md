@@ -13,25 +13,25 @@ repository.
 
 ## What it does
 
-Today, onboarding a new security data source means manually:
+Onboarding a new security data source to the Lakewatch platform requires
+mapping vendor-specific telemetry to the canonical OCSF schema — a process
+that today involves reading sample events by hand, identifying the right
+OCSF class, writing SQL transforms for the bronze → silver → gold pipeline,
+validating output against `schema.ocsf.io`, and iterating until correct.
+For a single source this can take hours to days.
 
-1. Reading a vendor sample
-2. Mapping fields to OCSF attributes
-3. Writing SQL transforms for bronze → silver → gold
-4. Validating against `schema.ocsf.io`
-5. Iterating until correct
+OCSF Mapper compresses this loop into an in-app workflow:
 
-OCSF Mapper compresses this to:
+| Stage | What the tool does |
+|-------|--------------------|
+| **Classify** | Profiles the sample's structure and uses Claude to select the appropriate OCSF class UIDs |
+| **Fetch schema** | Pulls class attributes from `schema.ocsf.io` and caches them locally |
+| **Build preset** | Generates a complete bronze/silver/gold preset using existing presets in the reference library as style anchors |
+| **Submit** | User reviews and edits in-app, then submits — the preset is staged on a UC volume and a PR is opened against this repository |
 
-1. Paste a sample path
-2. Click Generate
-3. Review and edit in-app
-4. Click Submit for review
-5. PR is submitted for review
-
-The tool uses Claude (via the [`ocsf_mapper`](https://pypi.org/project/ocsf-mapper/)
-library) to classify the sample, fetch the relevant OCSF schema, and generate
-a complete preset using existing presets in the library as style anchors.
+The classification and generation steps use Claude via the `ocsf_mapper`
+library; the staging and PR flow are handled by a separate Databricks
+notebook documented in [`docs/promoter.md`](docs/promoter.md).
 
 ---
 
