@@ -29,10 +29,6 @@ OCSF Mapper compresses this loop into an in-app workflow:
 | **Build preset** | Generates a complete bronze/silver/gold preset using existing presets in the reference library as style anchors |
 | **Submit** | User reviews and edits in-app, then submits — the preset is staged on a UC volume and a PR is opened against this repository |
 
-The classification and generation steps use Claude via the `ocsf_mapper`
-library; the staging and PR flow are handled by a separate Databricks
-notebook documented in [`docs/promoter.md`](docs/promoter.md).
-
 ---
 
 ## Architecture
