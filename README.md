@@ -1,124 +1,164 @@
-# OCSF Mapper Tool
+# OCSF Mapper
 
-A Streamlit-based **Databricks App** for mapping raw security telemetry (logs, events, alerts) to the [Open Cybersecurity Schema Framework (OCSF)](https://ocsf.io). Paste in a sample payload, pick a target OCSF class, and get back a normalized event plus a reusable mapping you can drop into your Lakewatch silver layer.
+A Databricks-hosted Streamlit app that converts vendor security telemetry
+samples into Lakewatch presets normalized to the [Open Cybersecurity Schema
+Framework (OCSF)](https://ocsf.io). Generated presets are reviewed in-app,
+submitted via a staging volume, and automatically opened as PRs against this
+repository.
 
-Built on top of the [`ocsf_mapper`](https://pypi.org/project/ocsf-mapper/) Python package and deployed as a [Databricks App](https://docs.databricks.com/en/dev-tools/databricks-apps/index.html).
+> **Status:** working internal tool. Generates production-quality presets;
+> the post-merge deployment to Lakewatch is still manual.
 
 ---
 
 ## What it does
 
-- **Ingests** a raw event sample (JSON, syslog, CEF, etc.)
-- **Suggests** the right OCSF class (e.g. `Authentication`, `Network Activity`, `File System Activity`) based on the payload shape
-- **Maps** source fields to OCSF attributes, with LLM-assisted suggestions for ambiguous fields
-- **Exports** the mapping as a reusable config (YAML/SQL) for use in silver-layer transformations or Lakewatch presets
-- **Validates** the output against the OCSF schema
+Today, onboarding a new security data source means manually:
+
+1. Reading a vendor sample
+2. Mapping fields to OCSF attributes
+3. Writing SQL transforms for bronze → silver → gold
+4. Validating against `schema.ocsf.io`
+5. Iterating until correct
+
+OCSF Mapper compresses this to:
+
+1. Paste a sample path
+2. Click Generate
+3. Review and edit in-app
+4. Click Submit for review
+5. PR appears in this repo
+
+The tool uses Claude (via the [`ocsf_mapper`](https://pypi.org/project/ocsf-mapper/)
+library) to classify the sample, fetch the relevant OCSF schema, and generate
+a complete preset using existing presets in the library as style anchors.
+
+---
+
+## Architecture
+
+```
+                      ┌──────────────────────┐
+   👤 User      ──►   │  Streamlit app       │   ◄── Claude API
+                      │  (Databricks Apps)   │
+                      └──────────┬───────────┘
+                                 │ writes 3 files
+                                 ▼
+                      ┌──────────────────────┐
+                      │  UC Volume           │
+                      │  staging/pending/    │
+                      └──────────┬───────────┘
+                                 │  ⏱ async (manual or scheduled)
+                                 ▼
+                      ┌──────────────────────┐
+                      │  Promoter            │   ◄── Databricks Secret
+                      │  (Databricks job)    │       (GitHub PAT)
+                      └──────────┬───────────┘
+                                 │ git push + open PR
+                                 ▼
+                      ┌──────────────────────┐
+                      │  This repo —         │   ──► 👥 Reviewer
+                      │  PR opened           │
+                      └──────────────────────┘
+```
+
+The split — submit-to-volume in the app, promote-to-GitHub in a separate job — means submitters don't need GitHub access. The app captures their identity from Databricks Apps OBO headers, the promoter authors commits as them, and PR attribution is preserved end-to-end without exposing a shared GitHub PAT to all users.
+
+See [`docs/architecture.md`](docs/architecture.md) for full data flow and `docs/promoter.md` for the staging/promotion details.
 
 ---
 
 ## Repository layout
 
 ```
-.
-├── app.py                              # Streamlit entrypoint
-├── app.yaml                            # Databricks Apps runtime config
-├── config.toml                         # Streamlit theme/config
-├── requirements.txt                    # Python dependencies
-└── ocsf_mapper-0.3.0-py3-none-any.whl  # Bundled ocsf_mapper package
-```
-
-### `app.yaml`
-Tells Databricks Apps how to launch the app:
-
-```yaml
-command:
-  - streamlit
-  - run
-  - app.py
-  - --server.port
-  - "8000"
-  - --server.address
-  - "0.0.0.0"
-```
-
-### `requirements.txt`
-The app depends on:
-- `streamlit>=1.30` — UI framework
-- `databricks-sdk>=0.30` — workspace / Unity Catalog access
-- `ocsf_mapper` — the mapping engine (installed from a UC Volume wheel at `/Volumes/dsl_dev/internal/ocsf_mapper/`)
-
----
-
-## Prerequisites
-
-- A Databricks workspace with **Databricks Apps** enabled
-- Access to the Unity Catalog volume hosting the `ocsf_mapper` wheel (`/Volumes/dsl_dev/internal/ocsf_mapper/`)
-- An LLM API key (entered via the app sidebar — not set as an env var)
-
----
-
-## Deploying to Databricks
-
-### Option 1: Deploy from this repo (recommended)
-
-1. In Databricks, go to **Workspace → Create → Git folder** and clone this repository.
-2. Open **Compute → Apps → Create App**.
-3. Point the app source at the cloned repo path (`/Workspace/Repos/<you>/OCSF-Mapper-Tool`).
-4. Click **Deploy**. Databricks will read `app.yaml`, install `requirements.txt`, and start the app.
-
-### Option 2: Deploy via the Databricks CLI
-
-```bash
-databricks apps deploy ocsf-mapper-tool \
-  --source-code-path /Workspace/Repos/<you>/OCSF-Mapper-Tool
+tools/ocsf-mapper/
+├── README.md
+├── app.py                    # Streamlit entrypoint
+├── app.yaml                  # Databricks Apps runtime config
+├── config.toml               # Streamlit theme
+├── requirements.txt          # Python dependencies
+├── ocsf_mapper-*.whl         # ocsf_mapper library
+└── docs/
+    ├── architecture.md       # Data flow diagrams
+    └── promoter.md           # Staging + promoter setup
 ```
 
 ---
 
-## Running locally
+## Deploying
 
-You can also run the Streamlit app outside Databricks for development:
+### Prerequisites
+
+- Databricks workspace with Apps enabled
+- Access to `/Volumes/dsl_dev/internal/ocsf_mapper/` (wheel + reference library)
+- An Anthropic API key (entered in the app sidebar)
+
+### Deploy from the workspace
+
+1. Clone this repo as a Databricks Git folder (`Workspace → Create → Git folder`).
+2. Navigate to `tools/ocsf-mapper/`.
+3. Create a new Databricks App, point its source at this folder.
+4. Click **Deploy**. Databricks reads `app.yaml`, installs `requirements.txt`, and starts the app.
+
+### Local development
 
 ```bash
 pip install -r requirements.txt
-# If the wheel path in requirements.txt isn't accessible locally,
-# install ocsf_mapper from a local copy of the .whl file instead:
-pip install ./ocsf_mapper-0.3.0-py3-none-any.whl
-
 streamlit run app.py
 ```
 
-Then open http://localhost:8501 and enter your API key in the sidebar.
+Then enter your Anthropic API key in the sidebar.
 
 ---
 
-## Using the tool
+## Submission flow
 
-1. **Paste a raw event** into the input panel (JSON, key-value, CEF, syslog, etc.).
-2. **Select a target OCSF class** — or let the tool auto-suggest one.
-3. **Review the suggested field mapping.** Edit, confirm, or override individual mappings.
-4. **Export** the mapping as:
-   - A YAML mapping block (for Lakewatch presets)
-   - A SQL `SELECT` for bronze → silver transforms
-   - A normalized sample event for validation
+When a user clicks **Submit for review**, the app writes three files to the staging volume:
+
+```
+/Volumes/dsl_dev/internal/ocsf_mapper/staging/pending/<submission_id>/
+├── preset.yaml          # The generated preset (post-edit)
+├── report.md            # Generation report (classes, references, token counts)
+└── metadata.json        # Submitter identity, OCSF version, classes, timestamp
+```
+
+Submission IDs follow the format `<UTC_timestamp>_<vendor>_<source_type>`, e.g.
+`20260430T151155Z_snyk_vulnerabilities`.
+
+The promoter (a separate Databricks notebook, not part of this app) drains
+`pending/`, opens PRs against this repo, and moves the directory to
+`processed/` or `failed/` based on outcome. See `docs/promoter.md` for the
+notebook source and runbook.
 
 ---
 
-## Notes for Rearc / Lakewatch users
+## Configuration
 
-This tool is designed to complement the [`security-content-library`](https://github.com/rearc/security-content-library) preset workflow. Mappings exported from here can be dropped directly into `data_sources/lakewatch/<vendor>/<source_type>/preset.yaml` silver transforms, following the same OCSF conventions as the Wiz reference preset.
+Sidebar settings the user controls:
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| Anthropic API key | — | Required; not persisted |
+| OCSF version | 1.8.0 | Validated against `schema.ocsf.io` |
+| Reference library | `/Volumes/.../preset_library` | Style anchors for generation |
+| Output volume | `/Volumes/.../generated_presets` | "Save to Volume" target |
 
 ---
 
 ## Roadmap
 
-- [ ] Bulk mapping from sample files in a UC volume
-- [ ] Preset-aware export (auto-generate full `preset.yaml` stubs)
-- [ ] OCSF version selector (currently pinned to the version bundled with `ocsf_mapper`)
-- [ ] CI validation of exported mappings against OCSF schema
+- [x] Generate presets from vendor samples
+- [x] In-app review and edit
+- [x] Staging-volume submission flow with full submitter attribution
+- [x] Promoter notebook drains staging → opens PRs
+- [ ] Scheduled promoter job (currently manual)
+- [ ] OCSF validation in promoter (run validator before opening PR)
+- [ ] GitHub Actions deploy on PR merge → Lakewatch
+- [ ] Service-account GitHub identity (replace personal PAT)
 
 ---
 
-## License
+## Owners
 
-Internal Rearc tooling. Not for public distribution.
+- **Tool:** [@ashwin975](https://github.com/ashwin975)
+- **Reviewers:** Bee, Sam
