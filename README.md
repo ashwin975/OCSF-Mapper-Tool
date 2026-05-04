@@ -142,23 +142,3 @@ Sidebar settings the user controls:
 | OCSF version | 1.8.0 | Validated against `schema.ocsf.io` |
 | Reference library | `/Volumes/.../preset_library` | Style anchors for generation |
 | Output volume | `/Volumes/.../generated_presets` | "Save to Volume" target |
-
----
-
-## Roadmap
-
-- [x] Generate presets from vendor samples
-- [x] In-app review and edit
-- [x] Staging-volume submission flow with full submitter attribution
-- [x] Promoter notebook drains staging → opens PRs
-- [ ] Scheduled promoter job (currently manual)
-- [ ] OCSF validation in promoter (run validator before opening PR)
-- [ ] GitHub Actions deploy on PR merge → Lakewatch
-- [ ] Service-account GitHub identity (replace personal PAT)
-
----
-
-## Owners
-
-- **Tool:** [@ashwin975](https://github.com/ashwin975)
-- **Reviewers:** Bee, Sam
