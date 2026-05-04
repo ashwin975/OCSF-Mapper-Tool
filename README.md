@@ -15,7 +15,7 @@ repository.
 
 Onboarding a new security data source to the Lakewatch platform requires
 mapping vendor-specific telemetry to the canonical OCSF schema — a process
-that today involves reading sample events by hand, identifying the right
+that today involves manually reading sample events, identifying the right
 OCSF class, writing SQL transforms for the bronze → silver → gold pipeline,
 validating output against `schema.ocsf.io`, and iterating until correct.
 For a single source this can take hours to days.
