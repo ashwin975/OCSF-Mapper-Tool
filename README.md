@@ -27,7 +27,7 @@ OCSF Mapper compresses this to:
 2. Click Generate
 3. Review and edit in-app
 4. Click Submit for review
-5. PR appears in this repo
+5. PR is submitted for review
 
 The tool uses Claude (via the [`ocsf_mapper`](https://pypi.org/project/ocsf-mapper/)
 library) to classify the sample, fetch the relevant OCSF schema, and generate
@@ -37,34 +37,9 @@ a complete preset using existing presets in the library as style anchors.
 
 ## Architecture
 
-```
-                      ┌──────────────────────┐
-   👤 User      ──►   │  Streamlit app       │   ◄── Claude API
-                      │  (Databricks Apps)   │
-                      └──────────┬───────────┘
-                                 │ writes 3 files
-                                 ▼
-                      ┌──────────────────────┐
-                      │  UC Volume           │
-                      │  staging/pending/    │
-                      └──────────┬───────────┘
-                                 │  ⏱ async (manual or scheduled)
-                                 ▼
-                      ┌──────────────────────┐
-                      │  Promoter            │   ◄── Databricks Secret
-                      │  (Databricks job)    │       (GitHub PAT)
-                      └──────────┬───────────┘
-                                 │ git push + open PR
-                                 ▼
-                      ┌──────────────────────┐
-                      │  This repo —         │   ──► 👥 Reviewer
-                      │  PR opened           │
-                      └──────────────────────┘
-```
-
-The split — submit-to-volume in the app, promote-to-GitHub in a separate job — means submitters don't need GitHub access. The app captures their identity from Databricks Apps OBO headers, the promoter authors commits as them, and PR attribution is preserved end-to-end without exposing a shared GitHub PAT to all users.
-
-See [`docs/architecture.md`](docs/architecture.md) for full data flow and `docs/promoter.md` for the staging/promotion details.
+<p align="center">
+  <img src="docs/architecture.png" alt="OCSF Mapper architecture" width="900" />
+</p>
 
 ---
 
