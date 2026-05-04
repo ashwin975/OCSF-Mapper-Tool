@@ -18,7 +18,7 @@ The tool classifies the sample to the relevant OCSF class, fetches the schema, a
 ## Architecture
 
 <p align="center">
-  <img src="docs/architecture.png" alt="OCSF Mapper architecture" width="900" />
+  <img src="architecture.png" alt="OCSF Mapper architecture" width="900" />
 </p>
 
 Three layers, separated by a UC volume boundary so submitters never need GitHub credentials:
