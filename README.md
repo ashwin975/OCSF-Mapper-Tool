@@ -41,8 +41,6 @@ Submission IDs follow the format `<UTC_timestamp>_<vendor>_<source_type>` — fo
 
 The promoter notebook drains `pending/`, computes the target file path (`data_sources/lakewatch/<vendor>/<source_type>/preset.yaml`), commits with the submitter as git author, pushes, and opens a PR. On success the submission moves to `processed/` with `pr_url.txt`; on failure it moves to `failed/` with `error.txt`.
 
-See [`docs/promoter.md`](docs/promoter.md) for the full runbook.
-
 ## Repository Layout
 
 ```
