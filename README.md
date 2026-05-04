@@ -38,7 +38,7 @@ a complete preset using existing presets in the library as style anchors.
 ## Architecture
 
 <p align="center">
-  <img src="docs/architecture.png" alt="OCSF Mapper architecture" width="900" />
+  <img src="architecture.png" alt="OCSF Mapper architecture" width="900" />
 </p>
 
 ---
