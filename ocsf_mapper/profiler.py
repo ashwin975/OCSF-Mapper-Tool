@@ -20,6 +20,97 @@ def _open(path: str):
     return open(p, "r", encoding="utf-8")
 
 
+
+# ── auditd support ──────────────────────────────────────────────────────────
+import struct as _struct
+from collections import OrderedDict as _OrderedDict
+
+
+_EVENT_RE = re.compile(r"audit\((?P<ts>\d+\.\d+):(?P<serial>\d+)\)")
+# stop saddr/value capture before the SADDR={...} human-readable appendix
+_KV_RE = re.compile(r'(\w+)=("(?:[^"\\]|\\.)*"|[^\s={]+)')
+
+
+def _hexdecode(v: str) -> str:
+    if len(v) >= 2 and len(v) % 2 == 0 and re.fullmatch(r"[0-9A-Fa-f]+", v):
+        try:
+            return bytes.fromhex(v).decode("utf-8", "replace").replace("\x00", " ").strip()
+        except ValueError:
+            return v
+    return v
+
+
+def _decode_saddr(hexstr: str) -> dict | None:
+    """Unpack the packed sockaddr hex. AF_INET (0x0002) -> ip + port."""
+    try:
+        raw = bytes.fromhex(hexstr)
+    except ValueError:
+        return None
+    if len(raw) < 8:
+        return None
+    fam = _struct.unpack_from("<H", raw, 0)[0]  # family is host-byte-order in auditd dumps
+    if fam == 2:  # AF_INET
+        port = _struct.unpack_from(">H", raw, 2)[0]
+        ip = ".".join(str(b) for b in raw[4:8])
+        return {"family": "inet", "addr": ip, "port": port}
+    if fam == 10:  # AF_INET6
+        port = _struct.unpack_from(">H", raw, 2)[0]
+        return {"family": "inet6", "port": port}
+    return {"family": str(fam)}
+
+
+def _parse_line(line: str):
+    m = _EVENT_RE.search(line)
+    if not m:
+        return None
+    rtype_m = re.match(r"type=(\S+)", line)
+    rtype = rtype_m.group(1) if rtype_m else "UNKNOWN"
+    # SYSCALL a0-a3 are raw register pointers, NOT hex strings -> never decode
+    decode_args = rtype == "EXECVE"
+    # cut the SADDR={...} appendix so it isn't double-parsed
+    line = re.sub(r"SADDR=\{[^}]*\}", "", line)
+    fields = {}
+    for k, raw in _KV_RE.findall(line):
+        if k in ("type", "msg"):
+            continue
+        val = raw.strip('"')
+        if k == "saddr":
+            dec = _decode_saddr(val)
+            fields[k] = dec if dec else val
+            continue
+        if k == "proctitle" or (decode_args and re.fullmatch(r"a\d+", k)):
+            fields[k] = _hexdecode(val)
+            continue
+        fields[k] = val
+    return m.group("serial"), m.group("ts"), rtype, fields
+
+
+def is_auditd(peek: str) -> bool:
+    return bool(re.match(r"type=\w+\s+msg=audit\(", peek.lstrip()))
+
+
+def iter_audit_events(path: str):
+    events: "_OrderedDict[str, dict]" = _OrderedDict()
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            parsed = _parse_line(line)
+            if not parsed:
+                continue
+            serial, ts, rtype, fields = parsed
+            ev = events.setdefault(serial, {"event_serial": serial, "event_time": ts})
+            if rtype == "SYSCALL":
+                ev.update(fields)
+            elif rtype in ev:
+                if not isinstance(ev[rtype], list):
+                    ev[rtype] = [ev[rtype]]
+                ev[rtype].append(fields)
+            else:
+                ev[rtype] = fields
+    yield from events.values()
+
+
+
+
 def detect_format(path: str, peek_bytes: int = 8192) -> dict:
     """Return {format, record_path, notes}.
 
@@ -76,6 +167,10 @@ def detect_format(path: str, peek_bytes: int = 8192) -> dict:
     if stripped.startswith("["):
         return {"format": "json_array", "record_path": "$[*]", "notes": "top-level JSON array"}
 
+    if is_auditd(stripped):
+        return {"format": "auditd", "record_path": None,
+                "notes": "Linux auditd records; reassembled per audit() event serial"}
+
     raise ValueError(f"unrecognized format; starts with {stripped[:40]!r}")
 
 
@@ -99,6 +194,8 @@ def iter_records(path: str, fmt: dict) -> Iterator[dict]:
         with _open(path) as fh:
             for rec in json.load(fh).get(field, []):
                 yield rec
+    elif f == "auditd":
+        yield from iter_audit_events(path)
     elif f == "json_single":
         with _open(path) as fh:
             yield json.load(fh)

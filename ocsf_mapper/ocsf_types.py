@@ -1,33 +1,3 @@
-"""OCSF data-type → Spark/Databricks SQL type mapping.
-
-Single source of truth for how an OCSF attribute's declared `type` (or
-`type_name`) translates into a Spark SQL type in a generated preset.
-
-Why this module exists
-----------------------
-The OCSF schema declares scalar attributes with data types like `timestamp_t`,
-`datetime_t`, `int_t`, `long_t`. The generator used to leave the choice of
-Spark type up to the LLM, which inferred it from the *reference preset* — and
-every reference preset was written against pre-existing `cyber_prod` DDLs that
-predate OCSF type corrections. Two recurring bugs resulted:
-
-  1. Timestamp:  OCSF `timestamp_t` is an INTEGER (epoch milliseconds). It was
-     being emitted as Spark `TIMESTAMP`, and `datetime_t` (the RFC-3339 string
-     sibling) was conflated with it. The OCSF validator rejects both.
-
-  2. Integer:    OCSF changed `type_uid` (and a few other fields) from `int_t`
-     to `long_t`. Presets emitting `INT` for those overflow / fail validation.
-
-By routing every type decision through this table, the generator emits the
-spec-correct Spark type deterministically instead of guessing.
-
-References
-----------
-- OCSF data types: https://schema.ocsf.io/<version>/data_types
-- `timestamp_t` = int64, milliseconds since Unix epoch.
-- `datetime_t`  = string, RFC-3339 (e.g. "2026-04-13T10:42:11.123Z").
-- `type_uid`    = long_t (changed from int_t in OCSF 1.x).
-"""
 from __future__ import annotations
 
 # ─────────────────────────────────────────────────────────────────────────────
