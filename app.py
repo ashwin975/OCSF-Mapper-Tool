@@ -34,10 +34,10 @@ from ocsf_mapper.reference_library import parse_preset_metadata
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-DEFAULT_REFERENCE_DIR = "/Volumes/dsl_dev/internal/ocsf_mapper/preset_library"
-DEFAULT_OUTPUT_DIR = "/Volumes/dsl_dev/internal/ocsf_mapper/generated_presets"
-DEFAULT_CACHE_DIR = "/Volumes/dsl_dev/internal/ocsf_mapper/schema_cache"
-DEFAULT_ADVISORY_DIR = "/Volumes/dsl_dev/internal/ocsf_mapper/advisory"
+DEFAULT_REFERENCE_DIR = "/Volumes/cyber_prod/internal/ocsf_mapper/preset_library"
+DEFAULT_OUTPUT_DIR = "/Volumes/cyber_prod/internal/ocsf_mapper/generated_presets"
+DEFAULT_CACHE_DIR = "/Volumes/cyber_prod/internal/ocsf_mapper/schema_cache"
+DEFAULT_ADVISORY_DIR = "/Volumes/cyber_prod/internal/ocsf_mapper/advisory"
 DEFAULT_OCSF_VERSION = "1.8.0"
 
 # ─── Volume access (Databricks SDK) ──────────────────────────────────────────
